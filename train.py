@@ -40,30 +40,41 @@ cfg_dtype = torch.float32 if device == "mps" else torch.bfloat16
 
 cfg = {
   "vocab_size": vocab_size,        # Number of unique tokens (characters)
-  "emb_dim": 256,                  # Token embedding dimension
+  "emb_dim": 128,                  # Token embedding dimension
   "n_heads": 4,                    # Number of attention heads
   "n_kv_groups": 2,                # Number of key/value head groups
   "n_layers": 4,                   # Number of Transformer blocks
-  "hidden_dim": 512,              # FFN hidden size (used if not using MoE)
-  "moe_intermediate_size": 768,   # MoE expert hidden dimension
-  "num_experts": 6,               # Total experts in MoE
-  "num_experts_per_tok": 2,       # Top-k experts per token
-  "context_length": 256,          # Maximum input length
+  "hidden_dim": 128,              # FFN hidden size (used if not using MoE)
+  "moe_intermediate_size": 128,   # MoE expert hidden dimension
+  "num_experts": 2,               # Total experts in MoE
+  "num_experts_per_tok": 1,       # Top-k experts per token
+  "context_length": 128,          # Maximum input length
   "rope_base": 10000.0,           # Rotary embedding base
   "qk_norm": False,               # Use RMSNorm on Q/K (optional)
   "dtype": cfg_dtype              # Data type (float32 for MPS, bfloat16 elsewhere)
 }
 
 cfg["head_dim"] = cfg["emb_dim"] // cfg["n_heads"]
-model = Qwen3MoE(cfg).to(device)
-if device != "mps": 
+
+model = Qwen3MoE(cfg).to_empty(device=device)
+
+def init_weights(m):
+  if isinstance(m, nn.Linear):
+    nn.init.xavier_uniform_(m.weight)
+  elif isinstance(m, nn.Embedding):
+    nn.init.normal_(m.weight, mean=0.0, std=0.02)
+
+model.apply(init_weights)
+
+if device != "mps":
   model = model.to(cfg["dtype"])
+
 optimizer = AdamW(model.parameters(), lr=3e-4)
 loss_fn = nn.CrossEntropyLoss()
 
 seq_len = cfg["context_length"]
 batch_size = 4
-epochs = 8
+epochs = 24
 steps_per_epoch = 250
 losses = []
 
@@ -134,7 +145,7 @@ plt.legend()
 plt.grid(True)
 print("📉 Loss curve saved as 'loss_curve.png'")
 
-model_save_path = f"toy_llama3_{epochs}epochs.pth"
+model_save_path = f"toy_Qwen3MoE_{epochs}epochs.pth"
 torch.save(model.state_dict(), model_save_path)
 print(f"Model saved to '{model_save_path}'")
 
